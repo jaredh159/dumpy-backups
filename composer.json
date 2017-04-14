@@ -1,0 +1,25 @@
+{
+    "name": "jaredh159/dumpy-backups",
+    "require": {
+        "aws/aws-sdk-php": "^3.25",
+        "vlucas/phpdotenv": "^2.4",
+        "symfony/var-dumper": "^3.2",
+        "symfony/console": "^3.2",
+        "monolog/monolog": "^1.22",
+        "league/flysystem": "^1.0"
+    },
+    "require-dev": {
+        "deployer/deployer": "^4.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "DumpyBackups\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Jared Henderson",
+            "email": "jared@netrivet.com"
+        }
+    ]
+}
