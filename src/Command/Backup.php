@@ -3,6 +3,8 @@
 namespace DumpyBackups\Command;
 
 use GuzzleHttp\Promise;
+use GuzzleHttp\Promise\PromiseInterface;
+use Aws\CommandPool;
 use Aws\S3\S3ClientInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -56,17 +58,58 @@ class Backup extends Command
         $prefix = $this->getPrefix();
         $date = date(DATE_ATOM);
 
+        $commands = [];
         foreach ($files as $file) {
-            $this->output->writeLn("<comment>PUT: {$file['relpath']}</comment>");
-            $promises[] = $this->client->putObject([
+            $commands[] = $this->client->getCommand('PutObject', [
                 'Bucket' => getenv('S3_BUCKET'),
                 'Key' => "{$prefix}{$date}/{$file['relpath']}",
                 'Body' => fopen($file['fullpath'], 'r'),
             ]);
         }
 
-        $this->addToManifest($date);
-        $this->cleanup();
+        $promise = $this->executeUploads($commands);
+
+        $promise->then(function () use ($date) {
+            $this->addToManifest($date);
+            $this->cleanup();
+            // @TODO notify success
+            $this->output->writeLn('Process complete!');
+        });
+
+        $promise->otherwise(function () {
+            // notify failure
+            $this->output->writeLn('<error>Process errored. :(</error>');
+        });
+
+        $promise->wait();
+    }
+
+    /**
+     * Asynchronously execute uploads
+     *
+     * @param \Aws\CommandInterface[] $commands
+     * @return PromiseInterface
+     */
+    protected function executeUploads(array $commands): PromiseInterface
+    {
+        $pool = new CommandPool($this->client, $commands, [
+            'concurrency' => getenv('UPLOAD_CONCURRENCY') ?: 25,
+            'before' => function ($command, $iterKey) {
+                $file = $command->toArray()['Key'];
+                $this->output->writeLn("<comment>START PUT: $file</comment>");
+            },
+            'fulfilled' => function($result, $iterKey) {
+                $url = $result->get('ObjectURL');
+                $file = explode(getenv('S3_BUCKET') . '/', $url)[1];
+                $this->output->writeLn("<info>PUT SUCCESS: $file</info>");
+            },
+            'rejected' => function($reason, $iterKey) {
+                $errorMsg = "PUT FAIL: {$iterKey}: {$reason}";
+                $this->output->writeLn("<error>$errorMsg</error>");
+            }
+        ]);
+
+        return $pool->promise();
     }
 
     /**
@@ -232,11 +275,12 @@ class Backup extends Command
             return null;
         }
 
+        $count = count($contents);
+        $this->output->writeLn("<error>Deleting $count objects.</error>");
+
         $this->client->deleteObjects([
             'Bucket' => getenv('S3_BUCKET'),
-            'Delete' => [
-                'Objects' => $list->get('Contents'),
-            ],
+            'Delete' => ['Objects' => $contents],
         ]);
 
         if ($list->get('IsTruncated')) {
