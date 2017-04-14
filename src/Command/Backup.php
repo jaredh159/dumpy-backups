@@ -56,28 +56,17 @@ class Backup extends Command
         $prefix = $this->getPrefix();
         $date = date(DATE_ATOM);
 
-        $promises = [];
         foreach ($files as $file) {
-            $promises[] = $this->client->putObjectAsync([
+            $this->output->writeLn("<comment>PUT: {$file['relpath']}</comment>");
+            $promises[] = $this->client->putObject([
                 'Bucket' => getenv('S3_BUCKET'),
                 'Key' => "{$prefix}{$date}/{$file['relpath']}",
                 'Body' => fopen($file['fullpath'], 'r'),
             ]);
         }
 
-        $promise = Promise\all($promises);
-
-        $promise->then(function (array $results) use ($date) {
-            $this->addToManifest($date);
-            $this->cleanup();
-            // @TODO notify succes
-        });
-
-        $promise->otherwise(function ($reason) {
-            // @TODO something failed, notify
-        });
-
-        $promise->wait();
+        $this->addToManifest($date);
+        $this->cleanup();
     }
 
     /**
