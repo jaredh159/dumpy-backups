@@ -63,7 +63,7 @@ class Backup extends Command
             $commands[] = $this->client->getCommand('PutObject', [
                 'Bucket' => getenv('S3_BUCKET'),
                 'Key' => "{$prefix}{$date}/{$file['relpath']}",
-                'Body' => fopen($file['fullpath'], 'r'),
+                'SourceFile' => $file['fullpath'],
             ]);
         }
 
